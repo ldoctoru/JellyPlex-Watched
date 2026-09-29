@@ -7,13 +7,25 @@ async function api(path, method = "GET") {
   const headers = { "X-Requested-With": "jpw" };
   if (token) headers.Authorization = "Bearer " + token;
   const res = await fetch(path, { method, headers });
-  if (res.status === 401) {
-    token = prompt("Access token") || "";
-    sessionStorage.setItem("jpw-token", token);
+  if (res.status === 401 || res.status === 429) {
+    showLogin(res.status === 429 ? "Too many attempts. Wait a minute and try again." : token ? "That token was not accepted." : "");
     throw new Error("unauthorized");
   }
   return { status: res.status, body: await res.json() };
 }
+
+function showLogin(message) {
+  const dialog = $("login");
+  text($("login-msg"), message);
+  if (!dialog.open) dialog.showModal();
+  $("login-token").focus();
+}
+window.jpwLogin = showLogin;
+$("login-form").addEventListener("submit", () => {
+  token = $("login-token").value;
+  sessionStorage.setItem("jpw-token", token);
+  location.reload();
+});
 
 function ago(iso) {
   if (!iso) return "-";

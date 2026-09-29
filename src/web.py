@@ -13,7 +13,7 @@ from datetime import datetime, timezone
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from time import perf_counter
+from time import monotonic, perf_counter
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
@@ -30,6 +30,41 @@ MAX_PLAN_ROWS = 500
 MAX_BODY_BYTES = 1_000_000
 LOG_BUFFER_LINES = 1000
 _LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "[::1]"}
+MAX_AUTH_FAILURES = 5
+AUTH_WINDOW_SECONDS = 60
+
+
+class AuthThrottle:
+    """Per-client failed-token counter so the bearer token can't be brute forced."""
+
+    def __init__(self, limit: int = MAX_AUTH_FAILURES, window: float = AUTH_WINDOW_SECONDS):
+        self.limit = limit
+        self.window = window
+        self._failures: dict[str, list[float]] = {}
+        self._lock = threading.Lock()
+
+    def _recent(self, client: str, now: float) -> list[float]:
+        recent = [t for t in self._failures.get(client, []) if now - t < self.window]
+        if recent:
+            self._failures[client] = recent
+        else:
+            self._failures.pop(client, None)
+        return recent
+
+    def blocked(self, client: str, now: float | None = None) -> bool:
+        with self._lock:
+            return len(self._recent(client, now or monotonic())) >= self.limit
+
+    def record_failure(self, client: str, now: float | None = None) -> None:
+        now = now or monotonic()
+        with self._lock:
+            recent = self._recent(client, now)
+            recent.append(now)
+            self._failures[client] = recent
+
+    def reset(self, client: str) -> None:
+        with self._lock:
+            self._failures.pop(client, None)
 
 
 def summarize_plan(plan: dict[Any, dict[str, list[WatchedUpdate]]]) -> dict[str, Any]:
@@ -267,6 +302,7 @@ def _short(error: Exception) -> str:
 def _make_handler(controller: Controller) -> type[BaseHTTPRequestHandler]:
     token = controller.settings.gui_token
     loopback_only = not token
+    throttle = AuthThrottle()
 
     class Handler(BaseHTTPRequestHandler):
         server_version = "jpw-gui"
@@ -280,20 +316,49 @@ def _make_handler(controller: Controller) -> type[BaseHTTPRequestHandler]:
             self.send_header("Content-Length", str(len(body)))
             self.send_header("Cache-Control", "no-store")
             self.send_header("X-Content-Type-Options", "nosniff")
-            self.send_header("Content-Security-Policy", "default-src 'self'")
+            self.send_header(
+                "Content-Security-Policy",
+                "default-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
+            )
+            self.send_header("X-Frame-Options", "DENY")
+            self.send_header("Referrer-Policy", "no-referrer")
             self.end_headers()
             self.wfile.write(body)
 
         def _json(self, payload: Any, status: int = 200) -> None:
             self._send(status, json.dumps(payload).encode(), "application/json")
 
+        def _client(self) -> str:
+            return self.client_address[0]
+
         def _authorized(self) -> bool:
             if loopback_only:
                 # Blocks DNS-rebinding: only accept loopback Host headers.
                 host = (self.headers.get("Host") or "").rsplit(":", 1)[0]
                 return host in _LOOPBACK_HOSTS
+            client = self._client()
+            self._locked_out = throttle.blocked(client)
+            if self._locked_out:
+                return False
             supplied = self.headers.get("Authorization", "").removeprefix("Bearer ")
-            return hmac.compare_digest(supplied.encode(), (token or "").encode())
+            if hmac.compare_digest(supplied.encode(), (token or "").encode()):
+                throttle.reset(client)
+                return True
+            if supplied:
+                throttle.record_failure(client)
+            return False
+
+        def _deny(self) -> None:
+            if token and getattr(self, "_locked_out", False):
+                body = json.dumps({"error": "too many attempts"}).encode()
+                self.send_response(HTTPStatus.TOO_MANY_REQUESTS)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.send_header("Retry-After", str(AUTH_WINDOW_SECONDS))
+                self.end_headers()
+                self.wfile.write(body)
+                return
+            self._json({"error": "unauthorized"}, HTTPStatus.UNAUTHORIZED)
 
         def do_GET(self) -> None:  # noqa: N802
             url = urlparse(self.path)
@@ -302,6 +367,8 @@ def _make_handler(controller: Controller) -> type[BaseHTTPRequestHandler]:
                     return self._json({"error": "forbidden"}, HTTPStatus.FORBIDDEN)
                 page = (STATIC_DIR / "index.html").read_bytes()
                 return self._send(200, page, "text/html; charset=utf-8")
+            if url.path == "/healthz":
+                return self._json({"ok": True})
             assets = {
                 "/app.js": "text/javascript",
                 "/config.js": "text/javascript",
@@ -312,7 +379,7 @@ def _make_handler(controller: Controller) -> type[BaseHTTPRequestHandler]:
                 body = (STATIC_DIR / url.path.lstrip("/")).read_bytes()
                 return self._send(200, body, assets[url.path] + "; charset=utf-8")
             if not self._authorized():
-                return self._json({"error": "unauthorized"}, HTTPStatus.UNAUTHORIZED)
+                return self._deny()
             if url.path == "/api/status":
                 return self._json(controller.status())
             if url.path == "/api/health":
@@ -354,7 +421,7 @@ def _make_handler(controller: Controller) -> type[BaseHTTPRequestHandler]:
 
         def _guard_write(self) -> bool:
             if not self._authorized():
-                self._json({"error": "unauthorized"}, HTTPStatus.UNAUTHORIZED)
+                self._deny()
                 return False
             # A custom header forces a CORS preflight, which we never grant.
             if self.headers.get("X-Requested-With") != "jpw":

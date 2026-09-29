@@ -78,6 +78,14 @@
   <div class="actions"><button id="rl-save" type="button" class="primary">Save configuration</button><span id="rl-status"></span></div>
   <datalist id="dl-users"></datalist><datalist id="dl-libs"></datalist>
 </main>
+<dialog id="login">
+  <form id="login-form" method="dialog">
+    <h2>Sign in</h2>
+    <label>Access token<input id="login-token" type="password" autocomplete="current-password" required></label>
+    <p id="login-msg" class="bad" role="alert"></p>
+    <div class="actions"><button type="submit" class="primary">Sign in</button></div>
+  </form>
+</dialog>
 <script src="/app.js"></script>
 <script src="/config.js"></script>
 <script src="/rules.js"></script>
