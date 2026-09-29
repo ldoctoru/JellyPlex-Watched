@@ -10,12 +10,16 @@
 <header>
   <h1>JellyPlex-Watched</h1>
   <span id="mode" class="pill"></span>
+  <nav>
+    <button id="nav-dash" type="button" class="tab active">Dashboard</button>
+    <button id="nav-settings" type="button" class="tab">Settings</button>
+  </nav>
   <span class="spacer"></span>
   <button id="preview" type="button">Preview plan</button>
   <button id="run" type="button" class="primary">Run now</button>
 </header>
 <p id="banner" hidden></p>
-<main>
+<main id="view-dash">
   <section class="tiles">
     <div class="tile"><span>Status</span><strong id="t-status">-</strong><small id="t-status-sub"></small></div>
     <div class="tile"><span>Last run</span><strong id="t-last">-</strong><small id="t-last-sub"></small></div>
@@ -40,6 +44,18 @@
     <pre id="log" tabindex="0"></pre>
   </section>
 </main>
+<main id="view-settings" hidden>
+  <p id="cfg-note" class="note"></p>
+  <div id="cfg-errors" class="errors" hidden></div>
+  <section><h2>General</h2><div id="cfg-general" class="grid"></div></section>
+  <section><h2>Filters <small>one entry per line</small></h2><div id="cfg-filters" class="grid"></div></section>
+  <section>
+    <h2>Servers <select id="add-type"><option>plex</option><option>jellyfin</option><option>emby</option></select><button id="add-server" type="button">Add server</button></h2>
+    <div id="cfg-servers"></div>
+  </section>
+  <div class="actions"><button id="cfg-save" type="button" class="primary">Save configuration</button><span id="cfg-status"></span></div>
+</main>
 <script src="/app.js"></script>
+<script src="/config.js"></script>
 </body>
 </html>

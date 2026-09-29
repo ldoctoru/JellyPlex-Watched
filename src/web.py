@@ -19,12 +19,14 @@ from urllib.parse import parse_qs, urlparse
 
 from loguru import logger
 
+from src import config_editor
 from src.connection import connect_server
 from src.settings import AppSettings
 from src.watched import WatchedUpdate
 
 STATIC_DIR = Path(__file__).parent / "web_static"
 MAX_PLAN_ROWS = 500
+MAX_BODY_BYTES = 1_000_000
 LOG_BUFFER_LINES = 1000
 _LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "[::1]"}
 
@@ -83,6 +85,7 @@ class Controller:
     preview_at: datetime | None = None
     preview_error: str | None = None
     previewing: bool = False
+    reload_pending: bool = False
 
     # -- logs ---------------------------------------------------------------
     def attach_log_sink(self) -> None:
@@ -120,6 +123,7 @@ class Controller:
             "last_error": state.last_error if state else None,
             "last_planned_servers": state.last_planned_servers if state else 0,
             "next_run": _iso(self.next_run),
+            "reload_pending": self.reload_pending,
             "servers": [
                 {"name": s.name, "type": type(s).__name__.removesuffix("Settings").lower()}
                 for s in self.settings.all_servers
@@ -143,6 +147,27 @@ class Controller:
                      "ms": round((perf_counter() - start) * 1000)}
                 )
         return results
+
+    def test_server(self, body: dict[str, Any]) -> dict[str, Any]:
+        """Try one draft server entry ({"type": ..., "server": {...}})."""
+        from src.settings import EmbySettings, JellyfinSettings, PlexSettings
+
+        models = {"plex": PlexSettings, "jellyfin": JellyfinSettings, "emby": EmbySettings}
+        kind = body.get("type")
+        server = body.get("server")
+        if kind not in models or not isinstance(server, dict):
+            return {"ok": False, "info": "invalid request"}
+        stored = config_editor.read_config(config_editor.config_path())
+        server = config_editor.merge_secrets({kind: [server]}, stored)[kind][0]
+        start = perf_counter()
+        try:
+            connection = connect_server(self.settings, models[kind].model_validate(server))
+            return {"ok": True, "info": str(connection.info()),
+                    "ms": round((perf_counter() - start) * 1000)}
+        except Exception as error:  # noqa: BLE001 - report any failure to the UI
+            message = "invalid server settings" if _is_validation(error) else _short(error)
+            return {"ok": False, "info": message,
+                    "ms": round((perf_counter() - start) * 1000)}
 
     # -- actions ------------------------------------------------------------
     def request_run(self) -> bool:
@@ -173,6 +198,12 @@ class Controller:
 
         threading.Thread(target=work, name="jpw-preview", daemon=True).start()
         return True
+
+
+def _is_validation(error: Exception) -> bool:
+    from pydantic import ValidationError
+
+    return isinstance(error, ValidationError)
 
 
 def _iso(value: datetime | None) -> str | None:
@@ -221,7 +252,11 @@ def _make_handler(controller: Controller) -> type[BaseHTTPRequestHandler]:
                     return self._json({"error": "forbidden"}, HTTPStatus.FORBIDDEN)
                 page = (STATIC_DIR / "index.html").read_bytes()
                 return self._send(200, page, "text/html; charset=utf-8")
-            assets = {"/app.js": "text/javascript", "/app.css": "text/css"}
+            assets = {
+                "/app.js": "text/javascript",
+                "/config.js": "text/javascript",
+                "/app.css": "text/css",
+            }
             if url.path in assets:
                 body = (STATIC_DIR / url.path.lstrip("/")).read_bytes()
                 return self._send(200, body, assets[url.path] + "; charset=utf-8")
@@ -234,6 +269,16 @@ def _make_handler(controller: Controller) -> type[BaseHTTPRequestHandler]:
             if url.path == "/api/logs":
                 after = int(parse_qs(url.query).get("after", ["0"])[0] or 0)
                 return self._json(controller.logs_after(after))
+            if url.path == "/api/config":
+                path = config_editor.config_path()
+                return self._json(
+                    {
+                        "path": str(path),
+                        "config": config_editor.mask_secrets(config_editor.read_config(path)),
+                        "locked": config_editor.env_locked_keys(),
+                        "mask": config_editor.MASK,
+                    }
+                )
             if url.path == "/api/plan":
                 return self._json(
                     {
@@ -245,13 +290,53 @@ def _make_handler(controller: Controller) -> type[BaseHTTPRequestHandler]:
                 )
             self._json({"error": "not found"}, HTTPStatus.NOT_FOUND)
 
-        def do_POST(self) -> None:  # noqa: N802
+        def _read_json(self) -> Any:
+            length = int(self.headers.get("Content-Length") or 0)
+            if length <= 0 or length > MAX_BODY_BYTES:
+                return None
+            try:
+                return json.loads(self.rfile.read(length))
+            except ValueError:
+                return None
+
+        def _guard_write(self) -> bool:
             if not self._authorized():
-                return self._json({"error": "unauthorized"}, HTTPStatus.UNAUTHORIZED)
+                self._json({"error": "unauthorized"}, HTTPStatus.UNAUTHORIZED)
+                return False
             # A custom header forces a CORS preflight, which we never grant.
             if self.headers.get("X-Requested-With") != "jpw":
-                return self._json({"error": "forbidden"}, HTTPStatus.FORBIDDEN)
+                self._json({"error": "forbidden"}, HTTPStatus.FORBIDDEN)
+                return False
+            return True
+
+        def do_PUT(self) -> None:  # noqa: N802
+            if not self._guard_write():
+                return
+            if urlparse(self.path).path != "/api/config":
+                return self._json({"error": "not found"}, HTTPStatus.NOT_FOUND)
+            body = self._read_json()
+            if not isinstance(body, dict):
+                return self._json({"error": "invalid body"}, HTTPStatus.BAD_REQUEST)
+            try:
+                config_editor.save_config(config_editor.config_path(), body)
+            except config_editor.ConfigError as error:
+                return self._json({"errors": error.errors}, HTTPStatus.UNPROCESSABLE_ENTITY)
+            except OSError as error:
+                logger.error("GUI: could not write config: {}", error)
+                return self._json({"error": "could not write config file"}, 500)
+            controller.reload_pending = True
+            logger.info("Configuration saved from the web GUI; applies on the next pass")
+            self._json({"saved": True})
+
+        def do_POST(self) -> None:  # noqa: N802
+            if not self._guard_write():
+                return
             path = urlparse(self.path).path
+            if path == "/api/config/test-server":
+                body = self._read_json()
+                if not isinstance(body, dict):
+                    return self._json({"error": "invalid body"}, HTTPStatus.BAD_REQUEST)
+                return self._json(controller.test_server(body))
             if path == "/api/run":
                 accepted = controller.request_run()
             elif path == "/api/preview":
