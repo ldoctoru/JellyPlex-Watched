@@ -59,8 +59,14 @@ The **Settings** tab edits `config.yaml`: general options, filters, servers
 the same loader a run uses, written atomically with mode 0600, and the previous
 file is kept as `config.yaml.bak-<timestamp>` (last 5). Limits: comments in the
 YAML are not preserved on save, values supplied by environment variables are
-shown as locked, user/library mappings and rules are kept unchanged (editors
-come later), and changes apply at the next run (GUI host/port need a restart).
+shown as locked, and changes apply at the next run (GUI host/port need a
+restart).
+
+The **Mappings & rules** tab edits `user_mappings`, `library_mappings`,
+`user_sync_rules` and `library_sync_rules`, can list the real users and
+libraries on each server to pick from, and includes a "Why is this skipped?"
+checker that walks one user/library/direction through the same rules the sync
+engine applies (direction, user and library filters, and target mappings).
 
 ## Configuration
 

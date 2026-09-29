@@ -1402,6 +1402,118 @@ class AppSettings(BaseModel):
             )
         )
 
+    def explain_scope(
+        self,
+        username: str,
+        library: str,
+        from_server: str,
+        to_server: str,
+        *,
+        library_type: str | None = None,
+        target_library_type: str | None = None,
+    ) -> dict[str, Any]:
+        """Explain, step by step, why a user/library pair would or would not sync.
+
+        Mirrors should_sync_scope plus the identity/library mapping lookups the
+        sync engine performs. ``verdict`` is True only when the scope is
+        authorized and both a target user and a target library exist.
+        """
+        steps: list[dict[str, Any]] = []
+
+        def step(check: str, ok: bool, detail: str) -> None:
+            steps.append({"check": check, "ok": ok, "detail": detail})
+
+        known = self._server_names
+        missing = [name for name in (from_server, to_server) if name not in known]
+        if missing or from_server == to_server:
+            step(
+                "Servers",
+                False,
+                f"unknown server(s): {', '.join(missing)}" if missing
+                else "source and destination must differ",
+            )
+            return {"verdict": False, "steps": steps}
+
+        by_default = to_server in self._server_sync_to_index.get(from_server, set())
+        user_rule = self._matches_user_rule(username, from_server, to_server)
+        library_rule = self._matches_library_rule(library, from_server, to_server)
+        reasons = [
+            label
+            for label, hit in (
+                (f"{from_server}.sync_to lists {to_server}", by_default),
+                ("a user_sync_rule matches", user_rule),
+                ("a library_sync_rule matches", library_rule),
+            )
+            if hit
+        ]
+        step(
+            "Direction enabled",
+            bool(reasons),
+            "; ".join(reasons)
+            or f"{from_server} does not push to {to_server} and no rule matches",
+        )
+
+        if user_rule:
+            user_ok, user_detail = True, "a user_sync_rule overrides user filters"
+        else:
+            user_ok = self.is_user_allowed(username, from_server)
+            user_detail = (
+                "passes the user whitelist/blacklist" if user_ok
+                else "blocked by the user whitelist/blacklist"
+            )
+            if user_ok and not (by_default or (from_server, to_server) in self._library_rule_directions):
+                user_ok, user_detail = False, "direction is not enabled for this user"
+        step("User filters", user_ok, user_detail)
+
+        if library_rule:
+            lib_ok, lib_detail = True, "a library_sync_rule overrides name and type filters"
+        else:
+            lib_ok, lib_detail = True, "passes name and type filters"
+            if not self._is_allowed_by_name_filter(
+                {normalize_name(library)},
+                self._whitelist_libraries_lc,
+                self._blacklist_libraries_lc,
+            ):
+                lib_ok, lib_detail = False, "blocked by the library whitelist/blacklist"
+            elif (
+                self._whitelist_library_types_lc or self._blacklist_library_types_lc
+            ) and not (library_type and target_library_type):
+                lib_ok, lib_detail = False, (
+                    "library type filters are set but the source or destination type is unknown"
+                )
+            elif any(
+                kind and not self.is_library_type_allowed(kind)
+                for kind in (library_type, target_library_type)
+            ):
+                lib_ok, lib_detail = False, "blocked by the library type whitelist/blacklist"
+            elif not (by_default or (from_server, to_server) in self._user_rule_directions):
+                lib_ok, lib_detail = False, "direction is not enabled for this library"
+        step("Library filters", lib_ok, lib_detail)
+
+        user_targets = self.sync_targets_for_user(from_server, username, to_server)
+        step(
+            "Target user",
+            bool(user_targets),
+            f"maps to {', '.join(user_targets)} on {to_server}" if user_targets
+            else f"no matching user on {to_server} (add a user mapping or use the same name)",
+        )
+        library_targets = self.sync_targets_for_library(from_server, library, to_server)
+        step(
+            "Target library",
+            bool(library_targets),
+            f"maps to {', '.join(library_targets)} on {to_server}" if library_targets
+            else f"no matching library on {to_server} (add a library mapping or use the same name)",
+        )
+
+        authorized = self.should_sync_scope(
+            username, library, from_server, to_server,
+            library_type=library_type, target_library_type=target_library_type,
+        )
+        return {
+            "verdict": authorized and bool(user_targets) and bool(library_targets),
+            "steps": steps,
+        }
+
     def sync_targets_for_user(
         self,
         source_server: str,

@@ -157,3 +157,53 @@ def test_summarize_plan_flattens_updates():
         "destination": "jf",
         "change": "watched",
     }
+
+
+def test_explain_scope_reports_each_step():
+    settings = AppSettings.model_validate({**BASE, "blacklist_users": ["mallory"]})
+    ok = settings.explain_scope("alice", "Movies", "a", "b")
+    assert ok["verdict"] is True
+    assert [s["check"] for s in ok["steps"]] == [
+        "Direction enabled",
+        "User filters",
+        "Library filters",
+        "Target user",
+        "Target library",
+    ]
+    blocked = settings.explain_scope("mallory", "Movies", "a", "b")
+    assert blocked["verdict"] is False
+    assert not next(s for s in blocked["steps"] if s["check"] == "User filters")["ok"]
+    unknown = settings.explain_scope("alice", "Movies", "a", "zzz")
+    assert unknown["verdict"] is False and unknown["steps"][0]["check"] == "Servers"
+
+
+def test_explain_scope_matches_should_sync_scope():
+    settings = AppSettings.model_validate(
+        {**BASE, "whitelist_library_types": ["movie"]}
+    )
+    for lib_type, target_type in [("movie", "movie"), ("show", "show"), (None, None)]:
+        explained = settings.explain_scope(
+            "alice", "Movies", "a", "b",
+            library_type=lib_type, target_library_type=target_type,
+        )
+        authorized = settings.should_sync_scope(
+            "alice", "Movies", "a", "b",
+            library_type=lib_type, target_library_type=target_type,
+        )
+        assert explained["verdict"] == authorized
+
+
+def test_explain_endpoint_and_validation(serve):
+    port = serve(make_controller())
+    hdr = {"X-Requested-With": "jpw"}
+
+    def post(payload):
+        conn = HTTPConnection("127.0.0.1", port, timeout=5)
+        conn.request("POST", "/api/explain", json.dumps(payload), hdr)
+        res = conn.getresponse()
+        return res.status, json.loads(res.read())
+
+    status, body = post({"user": "alice", "library": "Movies", "from": "a", "to": "b"})
+    assert status == 200 and "steps" in body
+    assert post({"user": "", "library": "x", "from": "a", "to": "b"})[0] == 400
+    assert post({"user": 1, "library": "x", "from": "a", "to": "b"})[0] == 400
