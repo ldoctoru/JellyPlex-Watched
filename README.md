@@ -54,6 +54,14 @@ to any server; "Run now" respects `dryrun`. The GUI binds to loopback by
 default; to expose it (for example from Docker) set `gui_host: 0.0.0.0`, publish
 the port, and set `gui_token`, which is required for non-loopback hosts.
 
+The **Settings** tab edits `config.yaml`: general options, filters, servers
+(with a connection test) and the `sync_to` matrix. Saves are validated through
+the same loader a run uses, written atomically with mode 0600, and the previous
+file is kept as `config.yaml.bak-<timestamp>` (last 5). Limits: comments in the
+YAML are not preserved on save, values supplied by environment variables are
+shown as locked, user/library mappings and rules are kept unchanged (editors
+come later), and changes apply at the next run (GUI host/port need a restart).
+
 ## Configuration
 
 Use [`sample.config.yaml`](sample.config.yaml) as the primary configuration

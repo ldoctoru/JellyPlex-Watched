@@ -149,6 +149,14 @@ def main() -> None:
     while True:
         try:
             # Reconfigure the logger on each loop so the logs are rotated on each run
+            if controller is not None and controller.reload_pending:
+                controller.reload_pending = False
+                try:
+                    settings = load_settings()
+                    controller.settings = settings
+                    logger.info("Reloaded configuration")
+                except Exception as error:  # keep running on the previous settings
+                    logger.error(f"Configuration reload failed: {error}")
             configure_logger(settings.log_file, settings.debug_level)
             if controller is None:
                 run_pass(settings, state)
