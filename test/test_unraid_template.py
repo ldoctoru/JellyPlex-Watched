@@ -1,6 +1,8 @@
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
+import yaml
+
 from src.settings import AppSettings
 
 TEMPLATE = Path(__file__).resolve().parents[1] / "unraid" / "jellyplex-watched.xml"
@@ -14,7 +16,7 @@ def _configs() -> dict[str, ET.Element]:
 def test_template_is_well_formed_container():
     root = ET.parse(TEMPLATE).getroot()
     assert root.tag == "Container" and root.get("version") == "2"
-    assert root.findtext("Repository") == "luigi311/jellyplex-watched:latest"
+    assert root.findtext("Repository").startswith("ghcr.io/ldoctoru/jellyplex-watched:")
     for tag in ("Name", "Overview", "WebUI", "Category"):
         assert root.findtext(tag)
 
@@ -35,7 +37,10 @@ def test_template_gui_defaults_match_the_app():
     configs = _configs()
     defaults = AppSettings.model_fields
     port = configs["8080"]
-    assert port.get("Type") == "Port" and port.get("Default") == str(defaults["gui_port"].default)
+    # Target is the container port (the app default); the value is the host port.
+    assert port.get("Type") == "Port"
+    assert port.get("Target") == str(defaults["gui_port"].default)
+    assert port.get("Default") == "8010" and port.text == "8010"
     assert configs["JPW_GUI_ENABLED"].get("Default") == "false"
     assert configs["JPW_GUI_TOKEN"].get("Mask") == "true"
     root = ET.parse(TEMPLATE).getroot()
@@ -45,3 +50,17 @@ def test_template_gui_defaults_match_the_app():
 def test_config_folder_is_writable_for_the_gui_editor():
     config = _configs()["/app/config"]
     assert config.get("Type") == "Path" and config.get("Mode") == "rw"
+
+
+def test_template_pulls_the_image_built_by_ci():
+    root = ET.parse(TEMPLATE).getroot()
+    assert root.findtext("Repository") == "ghcr.io/ldoctoru/jellyplex-watched:main"
+
+
+def test_ci_publishes_the_ghcr_image_for_this_owner():
+    workflow = (TEMPLATE.parents[1] / ".github" / "workflows" / "ci.yml").read_text(
+        encoding="utf-8"
+    )
+    parsed = yaml.safe_load(workflow)
+    assert parsed["jobs"]["docker"]["permissions"]["packages"] == "write"
+    assert workflow.count("ldoctoru") == 2  # image enable flag and registry login

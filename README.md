@@ -362,7 +362,11 @@ environment values; the regular loop does not live-reload configuration.
 [`unraid/jellyplex-watched.xml`](unraid/jellyplex-watched.xml) is a Community
 Apps style template: it maps `/app/config`, the optional GUI port (8080) and
 the `JPW_GUI_*` variables, and uses Unraid's `PUID=99`/`PGID=100` defaults. The
-web GUI is off by default; enabling it requires a GUI access token.
+web GUI is off by default; enabling it requires a GUI access token. The GUI is
+published on host port 8010 (container port 8080), and the template pulls
+`ghcr.io/ldoctoru/jellyplex-watched:main`, which the CI `docker` job builds and
+pushes on every push to `main` (make the package public in GitHub's package
+settings if Unraid should pull it without credentials).
 
 #### With a named credential override
 

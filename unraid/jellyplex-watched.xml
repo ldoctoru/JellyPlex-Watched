@@ -1,8 +1,8 @@
 <?xml version="1.0"?>
 <Container version="2">
   <Name>JellyPlex-Watched</Name>
-  <Repository>luigi311/jellyplex-watched:latest</Repository>
-  <Registry>https://hub.docker.com/r/luigi311/jellyplex-watched</Registry>
+  <Repository>ghcr.io/ldoctoru/jellyplex-watched:main</Repository>
+  <Registry>https://github.com/ldoctoru/JellyPlex-Watched/pkgs/container/jellyplex-watched</Registry>
   <Network>bridge</Network>
   <MyIP/>
   <Shell>sh</Shell>
@@ -25,7 +25,7 @@ Optional web GUI: set "Enable web GUI" to true and set a "GUI access token" (req
   <DonateLink/>
   <Requires/>
   <Config Name="Config folder" Target="/app/config" Default="/mnt/user/appdata/jellyplex-watched" Mode="rw" Description="Holds config.yaml (and the sample). Must be writable if you use the web GUI editor; the GUI also keeps config.yaml.bak-* backups here." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/jellyplex-watched</Config>
-  <Config Name="Web GUI port" Target="8080" Default="8080" Mode="tcp" Description="Port of the optional web GUI (only listens when the GUI is enabled)." Type="Port" Display="always" Required="false" Mask="false">8080</Config>
+  <Config Name="Web GUI port" Target="8080" Default="8010" Mode="tcp" Description="Host port for the optional web GUI (maps to container port 8080; only listens when the GUI is enabled)." Type="Port" Display="always" Required="false" Mask="false">8010</Config>
   <Config Name="Enable web GUI" Target="JPW_GUI_ENABLED" Default="false" Mode="" Description="true serves the dashboard and config editor. Requires the access token below." Type="Variable" Display="always" Required="false" Mask="false">false</Config>
   <Config Name="GUI access token" Target="JPW_GUI_TOKEN" Default="" Mode="" Description="Password for the web GUI. Required when the GUI is enabled; the app will not start without it." Type="Variable" Display="always" Required="false" Mask="true"/>
   <Config Name="GUI listen address" Target="JPW_GUI_HOST" Default="0.0.0.0" Mode="" Description="Address the GUI binds to inside the container. Leave as 0.0.0.0 so the mapped port works." Type="Variable" Display="advanced" Required="false" Mask="false">0.0.0.0</Config>
