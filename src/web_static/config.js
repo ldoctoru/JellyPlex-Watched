@@ -156,11 +156,7 @@
     if (code === 200) await load();
   });
 
-  function show(view) {
-    $("view-dash").hidden = view !== "dash"; $("view-settings").hidden = view !== "settings";
-    $("nav-dash").classList.toggle("active", view === "dash"); $("nav-settings").classList.toggle("active", view === "settings");
-    if (view === "settings") load().catch(() => {});
-  }
-  $("nav-dash").addEventListener("click", () => show("dash"));
-  $("nav-settings").addEventListener("click", () => show("settings"));
+  window.jpwLoadSettings = () => load().catch(() => {});
+  $("nav-dash").addEventListener("click", () => window.jpwShow("dash"));
+  $("nav-settings").addEventListener("click", () => window.jpwShow("settings"));
 })();

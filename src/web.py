@@ -21,6 +21,7 @@ from loguru import logger
 
 from src import config_editor
 from src.connection import connect_server
+from src.plex import Plex
 from src.settings import AppSettings
 from src.watched import WatchedUpdate
 
@@ -148,6 +149,55 @@ class Controller:
                 )
         return results
 
+    def discover(self) -> dict[str, Any]:
+        """List users and libraries on every configured server (live)."""
+        found: dict[str, Any] = {}
+        for server in self.settings.all_servers:
+            try:
+                connection = connect_server(self.settings, server)
+                if isinstance(connection, Plex):
+                    users = sorted(
+                        {
+                            name
+                            for user in connection.users
+                            if (name := user.username or user.title)
+                        }
+                    )
+                else:
+                    users = sorted(connection.users)
+                found[server.name] = {
+                    "ok": True,
+                    "users": users,
+                    "libraries": dict(sorted(connection.get_libraries().items())),
+                }
+            except Exception as error:  # noqa: BLE001 - report any failure to the UI
+                found[server.name] = {"ok": False, "error": _short(error), "users": [], "libraries": {}}
+        return found
+
+    def explain(self, body: dict[str, Any]) -> dict[str, Any] | None:
+        """Explain a scope against the saved config (falls back to the loaded one)."""
+        from src.settings import load_settings
+
+        user, library, source, target = (
+            body.get(k) for k in ("user", "library", "from", "to")
+        )
+        if not all(
+            isinstance(v, str) and 0 < len(v) <= 200
+            for v in (user, library, source, target)
+        ):
+            return None
+        assert isinstance(user, str) and isinstance(library, str)
+        assert isinstance(source, str) and isinstance(target, str)
+        types = {
+            k: body[k] if isinstance(body.get(k), str) and body[k] else None
+            for k in ("library_type", "target_library_type")
+        }
+        try:
+            settings = load_settings(auto_migrate=False)
+        except Exception:  # noqa: BLE001 - saved file unreadable; use running settings
+            settings = self.settings
+        return settings.explain_scope(user, library, source, target, **types)
+
     def test_server(self, body: dict[str, Any]) -> dict[str, Any]:
         """Try one draft server entry ({"type": ..., "server": {...}})."""
         from src.settings import EmbySettings, JellyfinSettings, PlexSettings
@@ -255,6 +305,7 @@ def _make_handler(controller: Controller) -> type[BaseHTTPRequestHandler]:
             assets = {
                 "/app.js": "text/javascript",
                 "/config.js": "text/javascript",
+                "/rules.js": "text/javascript",
                 "/app.css": "text/css",
             }
             if url.path in assets:
@@ -279,6 +330,8 @@ def _make_handler(controller: Controller) -> type[BaseHTTPRequestHandler]:
                         "mask": config_editor.MASK,
                     }
                 )
+            if url.path == "/api/discovery":
+                return self._json({"servers": controller.discover()})
             if url.path == "/api/plan":
                 return self._json(
                     {
@@ -337,6 +390,13 @@ def _make_handler(controller: Controller) -> type[BaseHTTPRequestHandler]:
                 if not isinstance(body, dict):
                     return self._json({"error": "invalid body"}, HTTPStatus.BAD_REQUEST)
                 return self._json(controller.test_server(body))
+            if path == "/api/explain":
+                body = self._read_json()
+                if not isinstance(body, dict):
+                    return self._json({"error": "invalid body"}, HTTPStatus.BAD_REQUEST)
+                result = controller.explain(body)
+                status = 200 if result is not None else HTTPStatus.BAD_REQUEST
+                return self._json(result or {"error": "invalid request"}, status)
             if path == "/api/run":
                 accepted = controller.request_run()
             elif path == "/api/preview":

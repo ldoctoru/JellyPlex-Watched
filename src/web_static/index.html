@@ -13,6 +13,7 @@
   <nav>
     <button id="nav-dash" type="button" class="tab active">Dashboard</button>
     <button id="nav-settings" type="button" class="tab">Settings</button>
+    <button id="nav-rules" type="button" class="tab">Mappings &amp; rules</button>
   </nav>
   <span class="spacer"></span>
   <button id="preview" type="button">Preview plan</button>
@@ -55,7 +56,30 @@
   </section>
   <div class="actions"><button id="cfg-save" type="button" class="primary">Save configuration</button><span id="cfg-status"></span></div>
 </main>
+<main id="view-rules" hidden>
+  <p class="note">Users and libraries with the same name on every server need no mapping. Add mappings only where names differ, then use rules to enable directions beyond each server's <code>sync_to</code>. Saving uses the same validated save as Settings; save before switching tabs, since each tab reloads the saved file.</p>
+  <div id="rl-errors" class="errors" hidden></div>
+  <div class="actions"><button id="rl-discover" type="button">Load users &amp; libraries from servers</button><span id="rl-discover-status"></span></div>
+  <section><h2>User mappings <button id="add-umap" type="button">Add</button></h2><div id="rl-umaps"></div></section>
+  <section><h2>Library mappings <button id="add-lmap" type="button">Add</button></h2><div id="rl-lmaps"></div></section>
+  <section><h2>User sync rules <button id="add-urule" type="button">Add</button></h2><div id="rl-urules"></div></section>
+  <section><h2>Library sync rules <button id="add-lrule" type="button">Add</button></h2><div id="rl-lrules"></div></section>
+  <section>
+    <h2>Why is this skipped? <small>uses the saved config; load users &amp; libraries first so library types are known</small></h2>
+    <div class="grid">
+      <label>User<input id="ex-user" type="text" list="dl-users" autocomplete="off"></label>
+      <label>Library<input id="ex-lib" type="text" list="dl-libs" autocomplete="off"></label>
+      <label>From<select id="ex-from"></select></label>
+      <label>To<select id="ex-to"></select></label>
+    </div>
+    <div class="actions"><button id="ex-run" type="button">Explain</button></div>
+    <ul id="ex-result"></ul>
+  </section>
+  <div class="actions"><button id="rl-save" type="button" class="primary">Save configuration</button><span id="rl-status"></span></div>
+  <datalist id="dl-users"></datalist><datalist id="dl-libs"></datalist>
+</main>
 <script src="/app.js"></script>
 <script src="/config.js"></script>
+<script src="/rules.js"></script>
 </body>
 </html>
