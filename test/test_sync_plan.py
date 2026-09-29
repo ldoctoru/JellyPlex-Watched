@@ -1159,3 +1159,28 @@ def test_plan_preserves_native_type_of_each_final_incoming_scope(monkeypatch):
     )
     assert len(writes) == 1
     assert outcomes[0].status == "applied"
+
+
+def test_run_pass_records_state_and_build_plan_does_not_write(monkeypatch):
+    settings = make_settings({"a": ["b"], "b": []})
+    plan = {"dest": {"a": [1]}}
+    build = Mock(return_value=plan)
+    apply = Mock()
+    monkeypatch.setattr(main, "build_plan", build)
+    monkeypatch.setattr(main, "apply_plan", apply)
+
+    state = main.RunState()
+    main.run_pass(settings, state)
+
+    apply.assert_called_once_with(plan)
+    assert state.last_planned_servers == 1
+    assert state.last_error is None
+    assert not state.running
+    assert state.durations == [state.last_duration]
+
+    apply.side_effect = RuntimeError("boom")
+    with pytest.raises(RuntimeError):
+        main.run_pass(settings, state)
+    assert state.last_error == "boom"
+    assert not state.running
+    assert len(state.durations) == 1

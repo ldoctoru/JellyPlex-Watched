@@ -1,6 +1,9 @@
 import os
 import traceback
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from time import perf_counter, sleep
+from typing import Any
 
 from loguru import logger
 
@@ -12,7 +15,29 @@ from src.sync_inventory import fetch_watched_inventory, generate_sync_inventory
 from src.sync_plan import generate_watched_plan
 
 
-def main_loop(settings: AppSettings, average_time: float) -> None:
+WatchedPlan = dict[Any, dict[str, list[Any]]]
+
+
+@dataclass
+class RunState:
+    """Outcome of the most recent pass, readable by other components."""
+
+    running: bool = False
+    last_started: datetime | None = None
+    last_duration: float | None = None
+    last_error: str | None = None
+    last_planned_servers: int = 0
+    durations: list[float] = field(default_factory=list)
+
+    @property
+    def average_time(self) -> float:
+        if not self.durations:
+            return 100.0  # Seed average time at 100
+        return sum(self.durations) / len(self.durations)
+
+
+def build_plan(settings: AppSettings, average_time: float) -> WatchedPlan:
+    """Read every server and compute the watched updates, without writing."""
     logger.info(f"Dryrun: {settings.dryrun}")
 
     logger.bind(data=settings).debug("Settings")
@@ -59,6 +84,11 @@ def main_loop(settings: AppSettings, average_time: float) -> None:
         }
     ).trace("Planned watched updates")
 
+    return watched_plan
+
+
+def apply_plan(watched_plan: WatchedPlan) -> None:
+    """Write a plan produced by build_plan to its destination servers."""
     for destination, source_batches in watched_plan.items():
         logger.info("Applying watched plan to {}", destination.info())
         for source_name, updates in source_batches.items():
@@ -67,25 +97,43 @@ def main_loop(settings: AppSettings, average_time: float) -> None:
             destination.update_watched(updates, source_name)
 
 
+def main_loop(settings: AppSettings, average_time: float) -> None:
+    apply_plan(build_plan(settings, average_time))
+
+
+def run_pass(settings: AppSettings, state: RunState) -> None:
+    """Run one full pass, recording its outcome on state."""
+    state.running = True
+    state.last_started = datetime.now(timezone.utc)
+    state.last_error = None
+    start = perf_counter()
+    try:
+        plan = build_plan(settings, state.average_time)
+        state.last_planned_servers = len(plan)
+        apply_plan(plan)
+        state.last_duration = perf_counter() - start
+        state.durations.append(state.last_duration)
+    except Exception as error:
+        state.last_duration = perf_counter() - start
+        state.last_error = str(error)
+        raise
+    finally:
+        state.running = False
+
+
 def main() -> None:
     # load_settings resolves ENV_FILE / YAML_FILE and creates one startup
     # snapshot for the lifetime of the process.
     settings: AppSettings = load_settings()
 
-    times: list[float] = []
-    average_time: float = 100.0  # Seed average time at 100
+    state = RunState()
     while True:
         try:
-            start = perf_counter()
             # Reconfigure the logger on each loop so the logs are rotated on each run
             configure_logger(settings.log_file, settings.debug_level)
-            main_loop(settings, average_time)
-            end = perf_counter()
-            times.append(end - start)
+            run_pass(settings, state)
 
-            if len(times) > 0:
-                average_time = sum(times) / len(times)
-                logger.info(f"Average time: {average_time}")
+            logger.info(f"Average time: {state.average_time}")
 
             if settings.run_only_once:
                 break
@@ -109,7 +157,7 @@ def main() -> None:
             sleep(settings.sleep_duration)
 
         except KeyboardInterrupt:
-            if len(times) > 0:
-                logger.info(f"Average time: {sum(times) / len(times)}")
+            if state.durations:
+                logger.info(f"Average time: {state.average_time}")
             logger.info("Exiting")
             os._exit(0)
