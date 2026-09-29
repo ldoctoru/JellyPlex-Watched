@@ -1,7 +1,7 @@
 import os
 import traceback
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from time import perf_counter, sleep
 from typing import Any
 
@@ -127,11 +127,35 @@ def main() -> None:
     settings: AppSettings = load_settings()
 
     state = RunState()
+    controller = None
+    if settings.gui_enabled:
+        from src.web import Controller, start_web_server
+
+        controller = Controller(settings, state=state)
+        start_web_server(controller)
+
+    def wait_for_next_run() -> None:
+        """Sleep until the next pass, waking early when the GUI requests a run."""
+        if controller is None:
+            sleep(settings.sleep_duration)
+            return
+        controller.next_run = datetime.now(timezone.utc) + timedelta(
+            seconds=settings.sleep_duration
+        )
+        controller.trigger.wait(settings.sleep_duration)
+        controller.trigger.clear()
+        controller.next_run = None
+
     while True:
         try:
             # Reconfigure the logger on each loop so the logs are rotated on each run
             configure_logger(settings.log_file, settings.debug_level)
-            run_pass(settings, state)
+            if controller is None:
+                run_pass(settings, state)
+            else:
+                controller.attach_log_sink()
+                with controller.run_lock:
+                    run_pass(settings, state)
 
             logger.info(f"Average time: {state.average_time}")
 
@@ -139,7 +163,7 @@ def main() -> None:
                 break
 
             logger.info(f"Looping in {settings.sleep_duration}")
-            sleep(settings.sleep_duration)
+            wait_for_next_run()
 
         except Exception as error:
             if isinstance(error, list):
@@ -154,7 +178,7 @@ def main() -> None:
                 break
 
             logger.info(f"Retrying in {settings.sleep_duration}")
-            sleep(settings.sleep_duration)
+            wait_for_next_run()
 
         except KeyboardInterrupt:
             if state.durations:

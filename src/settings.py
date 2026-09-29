@@ -709,6 +709,12 @@ class AppSettings(BaseModel):
     generate_guids: bool = True
     generate_locations: bool = True
 
+    # --- web GUI ------------------------------------------------------------
+    gui_enabled: bool = False
+    gui_host: str = "127.0.0.1"
+    gui_port: Annotated[int, Field(ge=1, le=65535)] = 8080
+    gui_token: str | None = None
+
     # --- filtering ----------------------------------------------------------
     blacklist_libraries: list[str] = []
     whitelist_libraries: list[str] = []
@@ -922,6 +928,18 @@ class AppSettings(BaseModel):
                 f"Duplicate library_mappings.canonical values (case-insensitive): {sorted(dupes)}"
             )
 
+        return self
+
+    @model_validator(mode="after")
+    def _validate_gui_exposure(self) -> "AppSettings":
+        if (
+            self.gui_enabled
+            and not self.gui_token
+            and self.gui_host not in {"127.0.0.1", "localhost", "::1"}
+        ):
+            raise ValueError(
+                "gui_token is required when gui_host is not a loopback address."
+            )
         return self
 
     @model_validator(mode="after")
