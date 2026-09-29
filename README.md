@@ -54,6 +54,24 @@ to any server; "Run now" respects `dryrun`. The GUI binds to loopback by
 default; to expose it (for example from Docker) set `gui_host: 0.0.0.0`, publish
 the port, and set `gui_token`, which is required for non-loopback hosts.
 
+Hardening notes: a wrong or repeated bad token is throttled (5 failures per
+minute per client, then HTTP 429), responses carry `X-Frame-Options: DENY`, a
+strict CSP and `Referrer-Policy: no-referrer`, and the sign-in form keeps the
+token only in the browser tab's session storage. Serve it over HTTPS (for
+example behind a reverse proxy) if it is reachable beyond localhost, since the
+bearer token is otherwise sent in clear text. The Docker images `EXPOSE 8080`
+and include a `HEALTHCHECK` that passes immediately when the GUI is disabled
+and otherwise probes the unauthenticated `/healthz` endpoint (which returns
+only `{"ok": true}`). Example:
+
+```bash
+docker run -d --name jellyplex-watched \
+  -p 127.0.0.1:8080:8080 \
+  -e JPW_GUI_ENABLED=true -e JPW_GUI_HOST=0.0.0.0 -e JPW_GUI_TOKEN=change-me \
+  -v "$(pwd)/config:/app/config" \
+  luigi311/jellyplex-watched:latest
+```
+
 The **Settings** tab edits `config.yaml`: general options, filters, servers
 (with a connection test) and the `sync_to` matrix. Saves are validated through
 the same loader a run uses, written atomically with mode 0600, and the previous

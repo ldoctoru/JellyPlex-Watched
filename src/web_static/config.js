@@ -24,6 +24,7 @@
   }
   async function call(path, method, body) {
     const res = await fetch(path, { method, headers: hdrs(), body: body ? JSON.stringify(body) : undefined });
+    if (res.status === 401 || res.status === 429) { if (window.jpwLogin) window.jpwLogin(res.status === 429 ? "Too many attempts. Wait a minute and try again." : "Sign in required."); throw new Error("unauthorized"); }
     return { status: res.status, body: await res.json() };
   }
   const el = (tag, props = {}, ...kids) => { const e = Object.assign(document.createElement(tag), props); e.append(...kids); return e; };

@@ -207,3 +207,44 @@ def test_explain_endpoint_and_validation(serve):
     assert status == 200 and "steps" in body
     assert post({"user": "", "library": "x", "from": "a", "to": "b"})[0] == 400
     assert post({"user": 1, "library": "x", "from": "a", "to": "b"})[0] == 400
+
+
+def test_healthz_is_unauthenticated_and_sets_security_headers(serve):
+    port = serve(make_controller(gui_token="s3cret"))
+    conn = HTTPConnection("127.0.0.1", port, timeout=5)
+    conn.request("GET", "/healthz")
+    res = conn.getresponse()
+    body = json.loads(res.read())
+    assert res.status == 200 and body == {"ok": True}
+    assert res.getheader("X-Frame-Options") == "DENY"
+    assert res.getheader("Referrer-Policy") == "no-referrer"
+    assert "frame-ancestors 'none'" in res.getheader("Content-Security-Policy")
+    conn.close()
+
+
+def test_repeated_bad_tokens_are_throttled(serve):
+    port = serve(make_controller(gui_token="s3cret"))
+    bad = {"Authorization": "Bearer wrong"}
+    for _ in range(web.MAX_AUTH_FAILURES):
+        assert request(port, "GET", "/api/status", bad)[0] == 401
+    assert request(port, "GET", "/api/status", bad)[0] == 429
+    # Even the right token is refused while the client is locked out.
+    assert request(port, "GET", "/api/status", {"Authorization": "Bearer s3cret"})[0] == 429
+
+
+def test_missing_token_does_not_count_as_a_failure(serve):
+    port = serve(make_controller(gui_token="s3cret"))
+    for _ in range(web.MAX_AUTH_FAILURES + 3):
+        assert request(port, "GET", "/api/status")[0] == 401
+    assert request(port, "GET", "/api/status", {"Authorization": "Bearer s3cret"})[0] == 200
+
+
+def test_auth_throttle_window_expires():
+    throttle = web.AuthThrottle(limit=2, window=10)
+    throttle.record_failure("c", now=100)
+    throttle.record_failure("c", now=101)
+    assert throttle.blocked("c", now=102)
+    assert not throttle.blocked("c", now=120)
+    throttle.record_failure("c", now=121)
+    throttle.reset("c")
+    assert not throttle.blocked("c", now=122)
