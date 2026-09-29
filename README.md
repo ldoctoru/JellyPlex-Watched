@@ -45,6 +45,15 @@ Keep in sync all your users watched history between jellyfin, plex and emby serv
 - \[x] Sync view dates
 
 
+## Web GUI (optional)
+
+Set `gui_enabled: true` to serve a small dashboard (default
+`http://127.0.0.1:8080`) showing run status, server health, a dry-run preview
+of the changes a run would make, and the live log. "Preview plan" never writes
+to any server; "Run now" respects `dryrun`. The GUI binds to loopback by
+default; to expose it (for example from Docker) set `gui_host: 0.0.0.0`, publish
+the port, and set `gui_token`, which is required for non-loopback hosts.
+
 ## Configuration
 
 Use [`sample.config.yaml`](sample.config.yaml) as the primary configuration

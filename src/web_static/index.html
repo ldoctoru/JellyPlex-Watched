@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>JellyPlex-Watched</title>
+<link rel="stylesheet" href="/app.css">
+</head>
+<body>
+<header>
+  <h1>JellyPlex-Watched</h1>
+  <span id="mode" class="pill"></span>
+  <span class="spacer"></span>
+  <button id="preview" type="button">Preview plan</button>
+  <button id="run" type="button" class="primary">Run now</button>
+</header>
+<p id="banner" hidden></p>
+<main>
+  <section class="tiles">
+    <div class="tile"><span>Status</span><strong id="t-status">-</strong><small id="t-status-sub"></small></div>
+    <div class="tile"><span>Last run</span><strong id="t-last">-</strong><small id="t-last-sub"></small></div>
+    <div class="tile"><span>Next run</span><strong id="t-next">-</strong><small id="t-next-sub"></small></div>
+    <div class="tile"><span>Servers planned</span><strong id="t-planned">-</strong><small>in last run</small></div>
+  </section>
+  <div class="cols">
+    <section>
+      <h2>Server health <button id="check" type="button">Check</button></h2>
+      <ul id="health"></ul>
+    </section>
+    <section>
+      <h2>Plan preview <small id="plan-meta"></small></h2>
+      <table>
+        <thead><tr><th>Item</th><th>User</th><th>Route</th><th>Change</th></tr></thead>
+        <tbody id="plan"></tbody>
+      </table>
+    </section>
+  </div>
+  <section>
+    <h2>Log</h2>
+    <pre id="log" tabindex="0"></pre>
+  </section>
+</main>
+<script src="/app.js"></script>
+</body>
+</html>

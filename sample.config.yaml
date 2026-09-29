@@ -31,6 +31,15 @@ max_threads: 1
 generate_guids: true # match items across servers via provider GUIDs
 generate_locations: true # match items across servers via file paths
 
+# --- web GUI (optional) -----------------------------------------------------
+# Read-only dashboard: status, server health, dry-run plan preview, live log,
+# and "run now". Off by default. Binds to loopback unless gui_host is changed;
+# a non-loopback gui_host requires gui_token (sent as a Bearer token).
+gui_enabled: false
+gui_host: 127.0.0.1
+gui_port: 8080
+# gui_token: "CHANGE_ME"
+
 # --- filtering (global defaults, overridden by matching scope rules) --------
 # Whitelist beats blacklist: if a whitelist is non-empty, only listed
 # entries pass and the matching blacklist is ignored. Can be list or
