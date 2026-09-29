@@ -1,0 +1,34 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>JellyPlex-Watched</Name>
+  <Repository>luigi311/jellyplex-watched:latest</Repository>
+  <Registry>https://hub.docker.com/r/luigi311/jellyplex-watched</Registry>
+  <Network>bridge</Network>
+  <MyIP/>
+  <Shell>sh</Shell>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/luigi311/JellyPlex-Watched/issues</Support>
+  <Project>https://github.com/luigi311/JellyPlex-Watched</Project>
+  <ReadMe>https://github.com/luigi311/JellyPlex-Watched#readme</ReadMe>
+  <Overview>Keeps watched and in-progress state in sync between Plex, Jellyfin and Emby servers, matching items by file name and provider IDs. On first start a sample.config.yaml is copied into the config folder: copy it to config.yaml and edit it (or use the optional web GUI) to add your servers. dryrun is on by default, so nothing is changed until you turn it off.&#13;
+&#13;
+Optional web GUI: set "Enable web GUI" to true and set a "GUI access token" (required because the GUI listens on all container interfaces). The GUI shows run status, server health, a dry-run plan preview and live logs, and can edit config.yaml, mappings and rules. Keep it on your LAN or behind an HTTPS reverse proxy; the token is sent as a bearer header over plain HTTP otherwise.</Overview>
+  <Category>MediaServer:Video Tools:</Category>
+  <WebUI>http://[IP]:[PORT:8080]/</WebUI>
+  <TemplateURL>https://raw.githubusercontent.com/ldoctoru/JellyPlex-Watched/main/unraid/jellyplex-watched.xml</TemplateURL>
+  <Icon/>
+  <ExtraParams/>
+  <PostArgs/>
+  <CPUset/>
+  <DateInstalled/>
+  <DonateText/>
+  <DonateLink/>
+  <Requires/>
+  <Config Name="Config folder" Target="/app/config" Default="/mnt/user/appdata/jellyplex-watched" Mode="rw" Description="Holds config.yaml (and the sample). Must be writable if you use the web GUI editor; the GUI also keeps config.yaml.bak-* backups here." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/jellyplex-watched</Config>
+  <Config Name="Web GUI port" Target="8080" Default="8080" Mode="tcp" Description="Port of the optional web GUI (only listens when the GUI is enabled)." Type="Port" Display="always" Required="false" Mask="false">8080</Config>
+  <Config Name="Enable web GUI" Target="JPW_GUI_ENABLED" Default="false" Mode="" Description="true serves the dashboard and config editor. Requires the access token below." Type="Variable" Display="always" Required="false" Mask="false">false</Config>
+  <Config Name="GUI access token" Target="JPW_GUI_TOKEN" Default="" Mode="" Description="Password for the web GUI. Required when the GUI is enabled; the app will not start without it." Type="Variable" Display="always" Required="false" Mask="true"/>
+  <Config Name="GUI listen address" Target="JPW_GUI_HOST" Default="0.0.0.0" Mode="" Description="Address the GUI binds to inside the container. Leave as 0.0.0.0 so the mapped port works." Type="Variable" Display="advanced" Required="false" Mask="false">0.0.0.0</Config>
+  <Config Name="PUID" Target="PUID" Default="99" Mode="" Description="User ID the app runs as (Unraid default: nobody = 99)." Type="Variable" Display="advanced" Required="false" Mask="false">99</Config>
+  <Config Name="PGID" Target="PGID" Default="100" Mode="" Description="Group ID the app runs as (Unraid default: users = 100)." Type="Variable" Display="advanced" Required="false" Mask="false">100</Config>
+</Container>

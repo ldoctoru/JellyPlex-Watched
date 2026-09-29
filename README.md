@@ -357,6 +357,13 @@ environment values; the regular loop does not live-reload configuration.
     luigi311/jellyplex-watched:latest
   ```
 
+#### On Unraid
+
+[`unraid/jellyplex-watched.xml`](unraid/jellyplex-watched.xml) is a Community
+Apps style template: it maps `/app/config`, the optional GUI port (8080) and
+the `JPW_GUI_*` variables, and uses Unraid's `PUID=99`/`PGID=100` defaults. The
+web GUI is off by default; enabling it requires a GUI access token.
+
 #### With a named credential override
 
 To replace credentials for servers already defined in YAML, use a named JSON
